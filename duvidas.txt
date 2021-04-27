@@ -1,0 +1,3 @@
+- pagamento do valor total da insurance
+- até quando pode pagar o residual 
+- quando liquidamos também pagamos o residual ou não?
