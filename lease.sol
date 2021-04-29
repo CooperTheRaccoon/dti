@@ -13,6 +13,7 @@ contract Lease {
     uint32 monthlyInstallment;
     uint32 monthlyInsurance;
     uint32 rental;
+    uint32 residualValue;
     
     struct Lessor {
         address payable lessor; 
@@ -94,6 +95,8 @@ contract Lease {
         
         setRental();
         
+        setResidualValue();
+        
         state = State.VALID;
 
         return true;
@@ -110,6 +113,10 @@ contract Lease {
     
     function getRental() public view returns (uint32) {
         return rental;
+    }
+    
+    function getResidualValue() public view returns (uint32) {
+        return residualValue;
     }
     
     function setLessorInput(uint32 a, uint32 b, uint32 c, uint32 d, uint32 e, uint32 f) private {
@@ -139,6 +146,10 @@ contract Lease {
     
     function setRental() private {
         rental = monthlyInstallment + monthlyInsurance;
+    }
+    
+    function setResidualValue() private {
+        residualValue = assetValue - (monthlyInstallment*duration);
     }
     
     //0,1000,5,2,10,20 (lessor)
