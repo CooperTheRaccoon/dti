@@ -12,6 +12,7 @@ contract Lease {
     uint32 duration;
     uint32 monthlyInstallment;
     uint32 monthlyInsurance;
+    uint32 rental;
     
     struct Lessor {
         address payable lessor; 
@@ -58,16 +59,12 @@ contract Lease {
         numLessors = numLessors + 1; //incrementa o numLessors
         
         //faz as atribuições 
-        assetIdentifier = assetIdentifier;
-        assetValue = assetValue;
-        lifespan = lifespan;
-        periodicity = periodicity;
-        fineRate = fineRate;
-        terminationFine = terminationFine;
+        
+        setLessorInput(assetIdentifier, assetValue, lifespan, periodicity, fineRate, terminationFine);
+        
+        setMonthlyInstallment();
         
         state = State.CREATED;
-        
-        monthlyInstallment = assetValue/lifespan; //já se pode atribuir o monthlyInstallment
         
         return true;
     }
@@ -78,7 +75,7 @@ contract Lease {
         numInsurers = numInsurers + 1; //incrementa o numInsurers
         
         //faz as atribuições 
-        interestRate = interestRate;
+        setInsurerInput(interestRate);
         
         state = State.SIGNED;
 
@@ -91,11 +88,13 @@ contract Lease {
         numLessees = numLessees + 1; //incrementa o numLessees
         
         //faz as atribuições 
-        duration = duration;
-
-        state = State.VALID;
+        setLesseeInput(duration);
         
-        monthlyInsurance = (assetValue*interestRate)/duration; //já se pode atribuir o monthlyInsurance (está a dar mal)
+        setMonthlyInsurance(); 
+        
+        setRental();
+        
+        state = State.VALID;
 
         return true;
     }
@@ -109,10 +108,41 @@ contract Lease {
         return monthlyInsurance;
     }
     
+    function getRental() public view returns (uint32) {
+        return rental;
+    }
+    
+    function setLessorInput(uint32 a, uint32 b, uint32 c, uint32 d, uint32 e, uint32 f) private {
+        assetIdentifier = a;
+        assetValue = b;
+        lifespan = c;
+        periodicity = d;
+        fineRate = e;
+        terminationFine = f;
+    }
+    
+    function setInsurerInput(uint32 a) private {
+        interestRate = a;
+    }
+    
+    function setLesseeInput(uint32 a) private {
+        duration = a;
+    }
+    
+    function setMonthlyInstallment() private {
+        monthlyInstallment = assetValue/lifespan;
+    }
+    
+    function setMonthlyInsurance() private {
+        monthlyInsurance = (assetValue*interestRate)/duration;
+    }
+    
+    function setRental() private {
+        rental = monthlyInstallment + monthlyInsurance;
+    }
+    
     //0,1000,5,2,10,20 (lessor)
     //5 (insurer)
     //2 (lessee)
-    
-    
     
 }
