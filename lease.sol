@@ -1,4 +1,4 @@
-pragma solidity 0.8.0 < 0.9.0;
+pragma solidity >= 0.8.0 < 0.9.0;
 
 contract Lease {
     
@@ -13,27 +13,19 @@ contract Lease {
     uint32 monthlyInstallment;
     uint32 monthlyInsurance;
     uint32 rental;
-    uint32 residualValue;
+    uint residualValue;
+    uint32 numPaidMonthlyInstallments;
+    uint startTime;
+    address payable lessor; 
+    address payable lessee; 
+    address payable insuranceCompany;
+    address payable smartContract;
     
-    struct Lessor {
-        address payable lessor; 
-    }
-    
-    struct Lessee {
-        address payable lessee; 
-    }
-    
-    struct InsuranceCompany {
-        address payable insurer; 
-    }
-    
-    Lessor public lessors;
-    uint32 numLessors;
-    Lessee public lessees;
-    uint32 numLessees;
-    InsuranceCompany public insurers;
-    uint32 numInsurers;
-    
+    mapping (address => uint) public balances;
+    mapping (uint => bool) public paidRentals; 
+
+    event NewOwner(address newOwner, uint32 assetIdentifier);
+    event AssetDestroyed(uint32 assetIdentifier, address insuranceCompany);
     
     enum State { INIT, CREATED, SIGNED, VALID, TERMINATED }
     
@@ -44,21 +36,33 @@ contract Lease {
         _;
     }
     
+    modifier hasPassed3Minutes() {
+        require (block.timestamp >= startTime + 30 seconds);
+        startTime = block.timestamp;
+        _;
+    }
+    
     constructor() public {
-        state = State.INIT;
-        numLessors = 0;
-        numLessees = 0;
-        numInsurers = 0;
+        
+        state = State.INIT; //estado lógico inicial
+        
+        //atribuição fixa de endereços para as entidades (podem-se mudar os endereços)
+        
+        lessor = payable(0x5B38Da6a701c568545dCfcB03FcB875f56beddC4);
+        insuranceCompany = payable(0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2);
+        lessee = payable(0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db);
+        smartContract = payable(0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB);
+        
+        numPaidMonthlyInstallments = 0;
+        startTime = 0;
+
     }
     
     function lessorInput(uint32 assetIdentifier, uint32 assetValue, uint32 lifespan, 
         uint32 periodicity, uint32 fineRate, uint32 terminationFine) inState(State.INIT) public returns (bool) {
         
-        //fazer o check de não ser o mesmo gajo que o lessee ou o insurer
-        require(numLessors != 1); //só entra caso seja o primeiro lessor
-        lessors.lessor = payable(msg.sender); //atribui o lessor
-        numLessors = numLessors + 1; //incrementa o numLessors
-        
+        require(payable(msg.sender) == lessor);
+
         //faz as atribuições 
         
         setLessorInput(assetIdentifier, assetValue, lifespan, periodicity, fineRate, terminationFine);
@@ -71,11 +75,11 @@ contract Lease {
     }
     
     function insuranceInput(uint32 interestRate) inState(State.CREATED) public returns (bool) {
-        require(numInsurers != 1 && msg.sender != lessors.lessor); //só entra caso seja o primeiro insurer e se for diferente do lessor
-        insurers.insurer = payable(msg.sender); //atribui o insurer
-        numInsurers = numInsurers + 1; //incrementa o numInsurers
+        
+        require(payable(msg.sender) == insuranceCompany);        
         
         //faz as atribuições 
+        
         setInsurerInput(interestRate);
         
         state = State.SIGNED;
@@ -84,9 +88,7 @@ contract Lease {
     }
     
     function lesseeInput(uint32 duration) inState(State.SIGNED) public returns (bool) {
-        require(numLessees != 1 && msg.sender != insurers.insurer && msg.sender != lessors.lessor); //só entra caso seja o primeiro lessee e se for diferente das outras entidades
-        lessees.lessee = payable(msg.sender); //atribui o lessee
-        numLessees = numLessees + 1; //incrementa o numLessees
+        require(payable(msg.sender) == lessee);
         
         //faz as atribuições 
         setLesseeInput(duration);
@@ -98,8 +100,58 @@ contract Lease {
         setResidualValue();
         
         state = State.VALID;
+        
+        startContractDuration();
 
         return true;
+    }
+    
+    function payRental() inState(State.VALID) hasPassed3Minutes() payable public returns (bool) {
+        
+        //vai ter que verificar se pode ser chamado
+        require(payable(msg.sender) == lessee);
+        require(balances[lessee] >= rental);
+        balances[lessee] -= monthlyInstallment;
+        balances[smartContract] += monthlyInstallment;
+        balances[lessee] -= monthlyInsurance;
+        balances[insuranceCompany] += monthlyInsurance;
+        paidRentals[numPaidMonthlyInstallments] = true;
+        numPaidMonthlyInstallments++;
+        return true;
+    }
+    
+    
+    function withdraw(uint amount) inState(State.VALID) payable public returns (bool) {
+        
+        //vai ter que verificar se pode ser chamado
+        require(payable(msg.sender) == lessor);
+        require(balances[smartContract] >= amount);
+        balances[smartContract] -= amount;
+        balances[lessor] += amount;
+    }
+    
+    function amortizeResidualValue() inState(State.VALID) payable public returns (bool) {
+        
+        //vai ter que verificar se pode ser chamado
+        require(payable(msg.sender) == lessee);
+        require(msg.value <= residualValue && residualValue >= 0);
+        balances[lessee] -= msg.value;
+        //atualiza-se
+        setNewResidualValue(msg.value);
+    }
+    
+    function liquidateLease() inState(State.VALID) payable public returns (bool) {
+        
+        //vai ter que verificar se pode ser chamado
+        require(payable(msg.sender) == lessee);
+        require(balances[lessee] >= monthlyInstallment * (duration - numPaidMonthlyInstallments));
+        balances[lessee] -= monthlyInstallment * (duration - numPaidMonthlyInstallments);
+        balances[smartContract] += monthlyInstallment * (duration - numPaidMonthlyInstallments);
+        numPaidMonthlyInstallments = duration;
+    }
+    
+    function addTokens(address entity) payable public{
+        balances[entity] += msg.value;
     }
     
     
@@ -115,8 +167,12 @@ contract Lease {
         return rental;
     }
     
-    function getResidualValue() public view returns (uint32) {
+    function getResidualValue() public view returns (uint) {
         return residualValue;
+    }
+    
+    function getNumPaidMonthlyInstallments() public view returns (uint) {
+        return numPaidMonthlyInstallments;
     }
     
     function setLessorInput(uint32 a, uint32 b, uint32 c, uint32 d, uint32 e, uint32 f) private {
@@ -152,6 +208,19 @@ contract Lease {
         residualValue = assetValue - (monthlyInstallment*duration);
     }
     
+    function setNewResidualValue(uint amount) private {
+        residualValue -= amount;
+    }
+    
+    function startContractDuration() private {
+        startTime = block.timestamp;
+    }
+    
+    function secondsRemaining() public view returns (uint256) {
+        return block.timestamp - startTime;
+    }
+
+
     //0,1000,5,2,10,20 (lessor)
     //5 (insurer)
     //2 (lessee)
