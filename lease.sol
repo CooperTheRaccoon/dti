@@ -127,6 +127,13 @@ contract Lease {
         require(balances[lessee] >= rental);
         require(numCycles > lastNumCycle && numCycles <= duration);
         
+        if(numCycles > 1) {
+            if(paidRentals[numCycles - 1] == false) {
+                require(balances[lessee] >= rental + fineRate);
+                balances[lessee] -= fineRate;
+            }
+        }
+        
         balances[lessee] -= monthlyInstallment;
         balances[smartContract] += monthlyInstallment;
         balances[lessee] -= monthlyInsurance;
