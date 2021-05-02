@@ -57,7 +57,7 @@ contract Lease {
     
     
     //construtor do contrato, que é chamado aquando do deploy
-    constructor() public {
+    constructor() {
         
         state = State.INIT; //estado lógico inicial
         
@@ -127,7 +127,7 @@ contract Lease {
     //função para avançar o ciclo a cada 3 minutos
     //deve ser executada manualmente (e só executa no estado VALID)
     function advanceCycle() inState(State.VALID) public returns (bool) {
-        require(block.timestamp >= startTime + 45 seconds); //verifica se já passaram 3 minutos desde o último startTime
+        require(block.timestamp >= startTime + (periodicity * 1 minutes)); //verifica se já passaram 3 minutos desde o último startTime
         require(currentCycle <= duration);
         startTime = block.timestamp; //atualiza o startTime
         currentCycle++; //incrementa o ciclo
@@ -249,7 +249,7 @@ contract Lease {
     
     
     //função que é chamada a cada ciclo e que verifica se o lessee pagou as duas últimas rendas (equivale à função 13)
-    function checkIfHasPaidTheLastTwoRentals() private returns (bool){
+    function checkIfHasPaidTheLastTwoRentals() private view returns (bool){
         
         //pode retornar true se estivermos num ciclo inferior a 3 (já que o ciclo inicial é 1 e só basta entrar aqui se não tiver pago as duas últimas rendas)
         if(currentCycle >= 3) {
@@ -369,12 +369,5 @@ contract Lease {
     function getSecondsPast() public view returns (uint) {
         return block.timestamp - startTime;
     }
-
-    //EXEMPLO DE INPUT INICIAL:
-    
-    //0,1000,5,2,10,20 (lessor)
-    //5 (insurer)
-    //2 (lessee)
-    //0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db (lessee)
     
 }
