@@ -129,9 +129,9 @@ contract Lease {
     function advanceCycle() inState(State.VALID) public returns (bool) {
         require(block.timestamp >= startTime + 45 seconds); //verifica se já passaram 3 minutos desde o último startTime
         require(currentCycle <= duration);
+        startTime = block.timestamp; //atualiza o startTime
+        currentCycle++; //incrementa o ciclo
         if(checkIfHasPaidTheLastTwoRentals()) { //verifica se o lessee já pagou as duas últimas rendas antes de avançar o ciclo
-            startTime = block.timestamp; //atualiza o startTime
-            currentCycle++; //incrementa o ciclo
             return true;
         }
         //se não tiver pago, o smart contract fica TERMINATED
@@ -147,12 +147,18 @@ contract Lease {
         require(currentCycle > lastRentalCycle && numPaidMonthlyInstallmentsOrRentals < duration); //só executa se estiver num ciclo maior que o último e se o número de rendas
         //ou monthly monthlyInstallments pagos não exceder a duração 
         
-        //ATENÇÃO!!!!!!!!!!!!
-        //talvez isto não faz sentido estar aqui, porque o gajo pode nunca mais pagar renda (equivale à função 8)
+        //este if implementa a função 8
         if(currentCycle > 1) {
             if(!paidRentals[currentCycle - 1]) {
-                require(balances[lessee] >= rental + fineRate);
-                balances[lessee] -= fineRate;
+                require(balances[lessee] >= (2*rental) + fineRate);
+                //paga a renda passada e o fine rate (a atual já pagará fora do if)
+                balances[lessee] -= monthlyInstallment; //decrementa o monthlyInstallment do lessee
+                balances[smartContract] += monthlyInstallment; //mete-o no smart contract
+                balances[lessee] -= monthlyInsurance; //decrementa o monthlyInsurance do lessee
+                balances[insuranceCompany] += monthlyInsurance; //mete-o na insuranceCompany
+                paidRentals[currentCycle - 1] = true; //indica que pagou a renda passada
+                balances[lessee] -= fineRate; //paga a fine rate
+                numPaidMonthlyInstallmentsOrRentals++; //incrementa o numero de rendas/monthly installments pagos
             }
         }
         balances[lessee] -= monthlyInstallment; //decrementa o monthlyInstallment do lessee
@@ -177,12 +183,12 @@ contract Lease {
     }
     
     
-    //função 6 (o valor que passa é o do msg.value!)
-    function amortizeResidualValue() inState(State.VALID) payable public returns (bool) {
+    //função 6
+    function amortizeResidualValue(uint amount) inState(State.VALID) payable public returns (bool) {
         require(payable(msg.sender) == lessee); //só é chamado pelo lessee
-        require(msg.value <= residualValue && residualValue >= 0); //o residualValue tem que ser maior que 0 (caso contrário nem faz sentido amortizar) e o msg.value tem que ser menor ou igual ao residualValue
-        balances[lessee] -= msg.value; //o lessee perde a quantia que pagou 
-        setNewResidualValue(msg.value); //atualiza-se o residualValue
+        require(amount <= residualValue && residualValue >= 0); //o residualValue tem que ser maior que 0 (caso contrário nem faz sentido amortizar) e o amount tem que ser menor ou igual ao residualValue
+        balances[lessee] -= amount; //o lessee perde a quantia que pagou 
+        setNewResidualValue(amount); //atualiza-se o residualValue
         return true;
     }
     
@@ -191,6 +197,7 @@ contract Lease {
     function liquidateLease() inState(State.VALID) payable public returns (bool) {
         require(payable(msg.sender) == lessee); //só é chamado pelo lessee
         require(balances[lessee] >= monthlyInstallment * (duration - numPaidMonthlyInstallmentsOrRentals)); //verifica se o lessee tem mais tokens que todos os monthlyInstallments restantes 
+        require(numPaidMonthlyInstallmentsOrRentals < duration);
         balances[lessee] -= monthlyInstallment * (duration - numPaidMonthlyInstallmentsOrRentals); //decrementa o valor dos monthlyInstallments que faltam da carteira do lessee
         balances[smartContract] += monthlyInstallment * (duration - numPaidMonthlyInstallmentsOrRentals); //mete este valor no "saldo" do smart contract
         numPaidMonthlyInstallmentsOrRentals = duration; //iguala o número de monthlyInstallments pagos à duration
@@ -241,10 +248,10 @@ contract Lease {
     }
     
     
-    //função que é chamada a cada ciclo e que verifica se o lessee pagou as duas últimas rendas
+    //função que é chamada a cada ciclo e que verifica se o lessee pagou as duas últimas rendas (equivale à função 13)
     function checkIfHasPaidTheLastTwoRentals() private returns (bool){
         
-        //pode retornar true se estivermos num ciclo inferior a 3 (já que o ciclo inicial é 1)
+        //pode retornar true se estivermos num ciclo inferior a 3 (já que o ciclo inicial é 1 e só basta entrar aqui se não tiver pago as duas últimas rendas)
         if(currentCycle >= 3) {
             //verifica se pagou as duas últimas rendas
             if(!paidRentals[currentCycle-1] && !paidRentals[currentCycle-2]) {
